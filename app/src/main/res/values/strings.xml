@@ -1,0 +1,9 @@
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Beta4MusicPlayer</string>
+    <string name="error_permission">К сожалению вы не предоставили доступ на чтение данных :(</string>
+    <string name="desc_image_song">Изображение музыки</string>
+    <string name="desc_image_content_song">Изображение контента музыки</string>
+
+    <string name="durationformatshort" translatable="false"><xliff:g id="format">%2$d:%3$02d</xliff:g></string>
+    <string name="durationformatlong" translatable="false"><xliff:g id="format">%1$d:%2$02d:%3$02d</xliff:g></string>
+</resources>
