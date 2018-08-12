@@ -37,9 +37,14 @@
 
     <TextView
         android:id="@+id/tvSongNameContent"
-        android:layout_width="wrap_content"
+        android:layout_width="280dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:ellipsize="marquee"
+        android:fontFamily="@font/roboto_light"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:scrollHorizontally="true"
+        android:singleLine="true"
         android:text=""
         android:textAlignment="center"
         android:textColor="@android:color/holo_blue_dark"
@@ -50,11 +55,16 @@
 
     <TextView
         android:id="@+id/tvArtistNameContent"
-        android:layout_width="wrap_content"
+        android:layout_width="280dp"
         android:layout_height="wrap_content"
         android:layout_marginEnd="8dp"
         android:layout_marginStart="8dp"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:scrollHorizontally="true"
+        android:singleLine="true"
         android:text=""
+        android:textAlignment="center"
         android:textColor="#fff"
         app:layout_constraintEnd_toEndOf="@+id/imgContentAlbumMin"
         app:layout_constraintStart_toStartOf="@+id/imgContentAlbumMin"

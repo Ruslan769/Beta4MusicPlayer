@@ -5,4 +5,6 @@
     <color name="colorAccent">#FF4081</color>
     <color name="red">#ef0e5a</color>
     <color name="filterContentImage">#000000</color>
+    <color name="black_translucent">#66000000</color>
+    <color name="colorSelectableItemWhite">#77ffffff</color>
 </resources>

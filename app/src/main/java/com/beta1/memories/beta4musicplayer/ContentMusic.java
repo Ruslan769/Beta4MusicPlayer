@@ -2,8 +2,10 @@ package com.beta1.memories.beta4musicplayer;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.graphics.Palette;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageButton;
@@ -13,12 +15,13 @@ import android.widget.TextView;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
-public class ContentMusic extends AppCompatActivity implements EventMediaControls {
+public class ContentMusic extends AppCompatActivity {
 
     private ImageButton btnPlay, btnPrev, btnNext;
-    private TextView tvTimePassed, tvTimeLeft;
+    private TextView tvTimePassed, tvTimeLeft, tvSongNameContent, tvArtistNameContent;
     private SeekBar seekBar;
-    private boolean musicPaused = true;
+    private ImageView imgContentAlbum;
+    private CircleImageView imgContentAlbumMin;
     private boolean activityPaused = false;
 
     @Override
@@ -31,7 +34,13 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
         btnNext = findViewById(R.id.btnNext);
         tvTimePassed = findViewById(R.id.tvTimePassed);
         tvTimeLeft = findViewById(R.id.tvTimeLeft);
+        tvSongNameContent = findViewById(R.id.tvSongNameContent);
+        tvArtistNameContent = findViewById(R.id.tvArtistNameContent);
         seekBar = findViewById(R.id.seekBarSong);
+        imgContentAlbum = findViewById(R.id.imgContentAlbum);
+        imgContentAlbumMin = findViewById(R.id.imgContentAlbumMin);
+
+        tvSongNameContent.setSelected(true);
 
         btnPlay.setOnClickListener(new eventButton());
         btnPrev.setOnClickListener(new eventButton());
@@ -55,10 +64,7 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
         });
 
         if (MusicApp.mService != null) {
-            MusicApp.mService.setOnEventControl(this);
-            if (!getIntent().hasExtra("play") || MusicApp.mService.isPlaying()) {
-                setContentSong();
-            }
+            MusicApp.mService.setOnEventControl(new ControlEvent());
         }
     }
 
@@ -66,14 +72,18 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
     public void onPause() {
         super.onPause();
         activityPaused = true;
-        musicPaused = true;
+        seekBarStop();
     }
 
     @Override
     public void onResume() {
         super.onResume();
         activityPaused = false;
-        btnAndSeekBarChange();
+        if (MusicApp.mService != null) {
+            if (!getIntent().hasExtra("play") || MusicApp.mService.isPlaying()) {
+                setContentSong();
+            }
+        }
     }
 
     @Override
@@ -87,24 +97,31 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
         overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right);
     }
 
-    @Override
-    public void play() {
-        if (!activityPaused) {
-            setContentSong();
-            btnAndSeekBarChange();
+    private class ControlEvent implements EventMediaControls {
+
+        @Override
+        public void play() {
+            if (!activityPaused) {
+                setContentSong();
+            }
         }
-    }
 
-    @Override
-    public void start() {
-        buttonLogoPause();
-        seekBarStart();
-    }
+        @Override
+        public void start() {
+            if (!activityPaused) {
+                buttonLogoPause();
+                seekBarStop();
+                seekBarStart();
+            }
+        }
 
-    @Override
-    public void pause() {
-        musicPaused = true;
-        buttonLogoPlay();
+        @Override
+        public void pause() {
+            if (!activityPaused) {
+                buttonLogoPlay();
+                seekBarStop();
+            }
+        }
     }
 
     private class eventButton implements View.OnClickListener {
@@ -156,11 +173,10 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
 
         @Override
         public void run() {
-            if (!musicPaused) {
-                setSeekBarText();
-                final int delay = 250;
-                seekBar.postDelayed(mUpdateProgress, delay); //delay
-            }
+            //Log.d("myLog", "mUpdateProgress");
+            setSeekBarText();
+            final int delay = 250;
+            seekBar.postDelayed(mUpdateProgress, delay); //delay
         }
     };
 
@@ -176,6 +192,7 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
         if (MusicApp.mService == null) return;
         if (MusicApp.mService.isPlaying()) {
             buttonLogoPause();
+            seekBarStop();
             seekBarStart();
         } else {
             buttonLogoPlay();
@@ -184,39 +201,35 @@ public class ContentMusic extends AppCompatActivity implements EventMediaControl
     }
 
     private void seekBarStart() {
-        if (musicPaused) {
-            musicPaused = false;
-            if (seekBar != null) {
-                seekBar.postDelayed(mUpdateProgress, 10);
-            }
+        if (seekBar != null && mUpdateProgress != null) {
+            seekBar.postDelayed(mUpdateProgress, 10);
+        }
+    }
+
+    private void seekBarStop() {
+        if (seekBar != null && mUpdateProgress != null) {
+            seekBar.removeCallbacks(mUpdateProgress);
         }
     }
 
     private void setContentSong() {
+        Log.d("myLog", "setContentSong");
         if (MusicApp.mService == null) return;
-
-        final Song arSong = MusicApp.mService.getList();
-        if (arSong == null) return;
 
         if (seekBar != null) {
             seekBar.setMax((int) MusicApp.mService.duration());
+            btnAndSeekBarChange();
         }
 
+        final Song arSong = MusicApp.mService.getList();
         final Bitmap albumB = arSong.getAlbumB();
         final String artist = arSong.getArtist();
         final String title = arSong.getTitle();
 
-        final ImageView imgContentAlbum = findViewById(R.id.imgContentAlbum);
         imgContentAlbum.setImageBitmap(albumB);
         imgContentAlbum.setColorFilter(R.color.filterContentImage);
-
-        final CircleImageView imgContentAlbumMin = findViewById(R.id.imgContentAlbumMin);
         imgContentAlbumMin.setImageBitmap(albumB);
-
-        final TextView tvArtistNameContent = findViewById(R.id.tvArtistNameContent);
-        tvArtistNameContent.setText(artist);
-
-        final TextView tvSongNameContent = findViewById(R.id.tvSongNameContent);
         tvSongNameContent.setText(title);
+        tvArtistNameContent.setText(artist);
     }
 }

@@ -7,15 +7,18 @@ import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
+import android.support.constraint.ConstraintLayout;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -28,6 +31,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.support.v7.widget.SearchView;
+import android.widget.TextView;
 
 import com.beta1.memories.beta4musicplayer.adapter.BaseSongAdapter;
 
@@ -39,20 +43,26 @@ import java.util.List;
 
 public class MusicApp extends AppCompatActivity {
 
-    private boolean permission = false;
+
     private final int REQUEST_EXTERNAL_STORAGE_PERMISSION = 200;
+    private String PREFERENCES_MUSIC_ID = "music_id";
+    private String PREFERENCES_MUSIC_POSITION = "music_duration";
+
+    private boolean permission = false;
     private final String[] arPermissions = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.WAKE_LOCK
     };
 
-    private final List<Song> arListSongs = new ArrayList();
+    private final List<Song> arListSongs = new ArrayList<>();
     private ListView songView;
     private BaseSongAdapter songAdapter;
 
     public static MusicService mService;
     private Intent musicIntent;
+
+    private SharedPreferences sharedPref;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,10 +70,10 @@ public class MusicApp extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         songView = findViewById(R.id.lvContainer);
+        sharedPref = getPreferences(Context.MODE_PRIVATE);
 
         if (hasPermissions()) {
             permission = true;
-            runApplication();
         } else {
             ActivityCompat.requestPermissions(this, arPermissions, REQUEST_EXTERNAL_STORAGE_PERMISSION);
         }
@@ -90,6 +100,7 @@ public class MusicApp extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        changeColorTitleSong();
     }
 
     @Override
@@ -97,6 +108,14 @@ public class MusicApp extends AppCompatActivity {
         super.onDestroy();
 
         if (mService != null) {
+
+            if (sharedPref != null && mService.position() > -1) {
+                final SharedPreferences.Editor sharedPrefEditor = sharedPref.edit();
+                sharedPrefEditor.putLong(PREFERENCES_MUSIC_ID, mService.position());
+                sharedPrefEditor.putLong(PREFERENCES_MUSIC_POSITION, mService.getCurrentPosition());
+                sharedPrefEditor.commit();
+            }
+
             mService.notifManagerCancel();
             stopService(musicIntent);
             mService = null;
@@ -136,7 +155,6 @@ public class MusicApp extends AppCompatActivity {
         if (permissionToStorageAccepted) {
             permission = true;
             startMusicServiceIntent();
-            runApplication();
         } else {
             startActivity(new Intent(this, ErrorPermissionActivity.class));
             finish();
@@ -149,21 +167,6 @@ public class MusicApp extends AppCompatActivity {
             bindService(musicIntent, serviceConnection, Context.BIND_AUTO_CREATE);
             startService(musicIntent);
         }
-    }
-
-    private void runApplication() {
-        getSongList();
-        // Отсортировка песен
-        Collections.sort(arListSongs, new Comparator<Song>() {
-            @Override
-            public int compare(Song o1, Song o2) {
-                return o1.getTitle().compareTo(o2.getTitle());
-            }
-        });
-
-        songAdapter = new BaseSongAdapter(this, arListSongs);
-        songView.setAdapter(songAdapter);
-        songView.setOnItemClickListener(new EventListMusic());
     }
 
     public Bitmap getAlbumart(Long album_id) {
@@ -201,6 +204,7 @@ public class MusicApp extends AppCompatActivity {
             // add song to list
             do {
                 final long musicId = cursor.getLong(idColumn);
+                Log.d("myLog", "getSongList: musicId = " + musicId);
                 final String musicTitle = cursor.getString(titleColumn);
                 final String musicArtist = cursor.getString(artistColumn);
                 final long album_id = cursor.getLong(albumColumn);
@@ -210,12 +214,39 @@ public class MusicApp extends AppCompatActivity {
         }
     }
 
+    private void setSongAdapter() {
+        songAdapter = new BaseSongAdapter(this, arListSongs);
+        songView.setAdapter(songAdapter);
+        songView.setOnItemClickListener(new EventListMusic());
+    }
+
     private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            MusicService.MusicBinder binder = (MusicService.MusicBinder) service;
+            // get song list
+            getSongList();
+            // sort
+            Collections.sort(arListSongs, new Comparator<Song>() {
+                @Override
+                public int compare(Song o1, Song o2) {
+                    return o1.getTitle().compareTo(o2.getTitle());
+                }
+            });
+
+            final MusicService.MusicBinder binder = (MusicService.MusicBinder) service;
             mService = binder.getService();
             mService.setList(arListSongs);
+
+            if (sharedPref.contains(PREFERENCES_MUSIC_ID)) {
+                final long songPosition = sharedPref.getLong(PREFERENCES_MUSIC_ID, 0);
+                final long songCurrentPosition = sharedPref.getLong(PREFERENCES_MUSIC_POSITION, 0);
+                mService.setPosition(songPosition);
+                mService.setCurrentPosition(songCurrentPosition);
+                mService.loadSong(true);
+            }
+
+            setSongAdapter();
+
             Log.d("myLog", "onServiceConnected");
         }
 
@@ -250,19 +281,39 @@ public class MusicApp extends AppCompatActivity {
         return true;
     }
 
+    private void changeColorTitleSong() {
+        if (mService == null) return;
+        if (mService.position() < 0) return;
+
+        Log.d("myLog", "changeColorTitleSong");
+
+        for (int i = 0; i < songView.getCount(); i++) {
+            final View listView = songView.getChildAt(i);
+            final TextView tvSong = listView.findViewById(R.id.tvTitle);
+            tvSong.setTextColor(Color.BLACK);
+        }
+
+        final TextView tvSong = songView.findViewWithTag(mService.position()).findViewById(R.id.tvTitle);
+        tvSong.setTextColor(Color.parseColor("#E91E63"));
+    }
+
     private class EventListMusic implements AdapterView.OnItemClickListener {
 
         @Override
         public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
 
-            int tag = Integer.valueOf(String.valueOf(view.getTag()));
+            if (mService == null) return;
 
-            Intent intent = new Intent(MusicApp.this, ContentMusic.class);
-            if (mService.position() != tag) {
-                mService.setPosition(tag);
+            final long positionId = (long) view.getTag();
+            final Intent intent = new Intent(MusicApp.this, ContentMusic.class);
+
+            if (mService.position() != positionId) {
+                mService.setPosition(positionId);
                 mService.play();
                 intent.putExtra("play", 1);
+                changeColorTitleSong();
             }
+
             startActivity(intent);
             overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left);
         }

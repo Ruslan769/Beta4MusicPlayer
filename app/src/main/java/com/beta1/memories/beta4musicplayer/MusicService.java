@@ -1,5 +1,6 @@
 package com.beta1.memories.beta4musicplayer;
 
+import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -9,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -17,6 +19,7 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.support.v4.app.NotificationCompat;
+import android.support.v7.graphics.Palette;
 import android.util.Log;
 
 import java.io.IOException;
@@ -26,16 +29,28 @@ public class MusicService extends Service implements
         MediaPlayer.OnPreparedListener, MediaPlayer.OnErrorListener,
         MediaPlayer.OnCompletionListener {
 
+    public static final String NEXT_ACTION = "com.beta1.memories.beta4musicplayer.next";
+    public static final String PREVIOUS_ACTION = "com.beta1.memories.beta4musicplayer.prev";
+    public static final String PLAY_OR_PAUSE_ACTION = "com.beta1.memories.beta4musicplayer.play_or_pause";
+
     private final IBinder binder = new MusicBinder();
     private MediaPlayer mMedia;
     private List<Song> songsList;
-    private int position = -1;
+    private boolean notPlaying = true;
+    private long positionId = -1;
+    private long currentPosition = 0;
 
     private NotificationManager mManager;
-    private String songTitle;
     private final int NOTIFY_ID = 1;
 
     private EventMediaControls eventMediaControls;
+    private final BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
+
+        @Override
+        public void onReceive(final Context context, final Intent intent) {
+            handleCommandIntent(intent);
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -47,6 +62,15 @@ public class MusicService extends Service implements
         mMedia.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
         mMedia.setAudioStreamType(AudioManager.STREAM_MUSIC);
         mManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        final IntentFilter filter = new IntentFilter();
+        filter.addAction(PLAY_OR_PAUSE_ACTION);
+        filter.addAction(PREVIOUS_ACTION);
+        filter.addAction(NEXT_ACTION);
+        /*filter.addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        filter.addAction(Intent.ACTION_SCREEN_ON);*/
+        // Attach the broadcast listener
+        registerReceiver(mIntentReceiver, filter);
     }
 
     @Override
@@ -68,6 +92,19 @@ public class MusicService extends Service implements
         if (mMedia != null) {
             mMedia.release();
         }
+        unregisterReceiver(mIntentReceiver);
+    }
+
+    private void handleCommandIntent(Intent intent) {
+        final String action = intent.getAction();
+
+        if (NEXT_ACTION.equals(action)) {
+            next();
+        } else if (PREVIOUS_ACTION.equals(action)) {
+            prev();
+        } else if (PLAY_OR_PAUSE_ACTION.equals(action)) {
+            playOrPause();
+        }
     }
 
     public void setOnEventControl(EventMediaControls e) {
@@ -79,27 +116,22 @@ public class MusicService extends Service implements
     }
 
     public void setList(List<Song> arr) {
-        this.songsList = arr;
+        songsList = arr;
     }
 
-    public void setPosition(int position) {
-        this.position = position;
+    public void setPosition(long positionId) {
+        this.positionId = positionId;
     }
 
-    public void play() {
-        if (eventMediaControls != null) {
-            eventMediaControls.pause();
-        }
-
+    public void loadSong(final boolean notPlaying) {
+        if (mMedia == null) return;
+        this.notPlaying = notPlaying;
         mMedia.reset();
-
-        final Song arSong = songsList.get(position);
+        final Song arSong = getList();
         final long id = arSong.getId();
 
-        songTitle = arSong.getTitle();
-
-        final Uri trackUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id);
         try {
+            final Uri trackUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id);
             mMedia.setDataSource(getApplicationContext(), trackUri);
         } catch (IOException e) {
             e.printStackTrace();
@@ -107,73 +139,27 @@ public class MusicService extends Service implements
         mMedia.prepareAsync();
     }
 
-    public Song getList() {
-        return songsList.get(position);
-    }
-
-    public long getCurrentPosition() {
-        return mMedia.getCurrentPosition();
-    }
-
-    public int position() {
-        return position;
-    }
-
-    public long duration() {
-        return mMedia.getDuration();
-    }
-
-    public boolean isPlaying() {
-        return mMedia.isPlaying();
-    }
-
-    public void pause() {
-        mMedia.pause();
+    public void play() {
         if (eventMediaControls != null) {
             eventMediaControls.pause();
         }
+        loadSong(false);
     }
 
-    public void start() {
-        mMedia.start();
+    @Override
+    public void onPrepared(MediaPlayer mp) {
+        if (notPlaying) {
+            seek(currentPosition);
+            currentPosition = 0;
+            return;
+        }
+
+        mp.start();
+
+        buildNotification();
         if (eventMediaControls != null) {
-            eventMediaControls.start();
+            eventMediaControls.play();
         }
-    }
-
-    public void playOrPause() {
-        if (mMedia != null) {
-            if (isPlaying()) {
-                pause();
-            } else {
-                start();
-            }
-        }
-    }
-
-    public long seek(final long whereto) {
-        mMedia.seekTo((int) whereto);
-        return whereto;
-    }
-
-    public void prev() {
-        if (position > 0) {
-            position--;
-        } else {
-            position = songsList.size() - 1;
-        }
-        play();
-    }
-
-    public void next() {
-        int sizeSong = songsList.size() - 1;
-        if (sizeSong == 0) return;
-        if (position < sizeSong) {
-            position++;
-        } else {
-            position = 0;
-        }
-        play();
     }
 
     @Override
@@ -198,31 +184,147 @@ public class MusicService extends Service implements
         return false;
     }
 
-    @Override
-    public void onPrepared(MediaPlayer mp) {
-        mp.start();
+    public Song getList() {
+        Song selectedSong = null;
+        for (final Song song : songsList) {
+            if (song.getId() == positionId) {
+                selectedSong = song;
+                break;
+            }
+        }
+        return selectedSong;
+    }
+
+    public long getCurrentPosition() {
+        return mMedia.getCurrentPosition();
+    }
+
+    public long position() {
+        return positionId;
+    }
+
+    public long duration() {
+        return mMedia.getDuration();
+    }
+
+    public boolean isPlaying() {
+        return mMedia.isPlaying();
+    }
+
+    public void setCurrentPosition(final long position) {
+        this.currentPosition = position;
+    }
+
+    public void pause() {
+        mMedia.pause();
+        buildNotification();
+        if (eventMediaControls != null) {
+            eventMediaControls.pause();
+        }
+    }
+
+    public void start() {
+        mMedia.start();
+        buildNotification();
+        if (eventMediaControls != null) {
+            eventMediaControls.start();
+        }
+    }
+
+    public void playOrPause() {
+        if (mMedia != null) {
+            if (isPlaying()) {
+                pause();
+            } else {
+                start();
+            }
+        }
+    }
+
+    public void seek(final long whereto) {
+        mMedia.seekTo((int) whereto);
+    }
+
+    public void prev() {
+        final int sizeSong = songsList.size();
+
+        for (int i = 0; i < sizeSong; i++) {
+            if (songsList.get(i).getId() == positionId) {
+                if (i > 0) {
+                    positionId = songsList.get(--i).getId();
+                } else {
+                    positionId = songsList.get(sizeSong-1).getId();
+                }
+                break;
+            }
+        }
+
+        play();
+    }
+
+    public void next() {
+        final int sizeSong = songsList.size() - 1;
+        if (sizeSong < 1) return;
+
+        for (int i = 0; i <= sizeSong; i++) {
+            if (songsList.get(i).getId() == positionId) {
+                if (i < sizeSong) {
+                    positionId = songsList.get(++i).getId();
+                } else {
+                    positionId = songsList.get(0).getId();
+                }
+                break;
+            }
+        }
+        play();
+    }
+
+    private final PendingIntent retrievePlaybackAction(final String action) {
+        final Intent intent = new Intent(action);
+        return PendingIntent.getBroadcast(this, 1, intent, 0);
+    }
+
+    private void buildNotification() {
+        final Song arSong = getList();
+        final String titleName = arSong.getTitle();
+        final String artistName = arSong.getArtist();
+        final Bitmap albumB = arSong.getAlbumB();
+        final boolean isPlaying = isPlaying();
+
+        int playButtonResId = isPlaying
+                ? R.drawable.ic_action_pause_min : R.drawable.ic_action_play_min;
+
         Intent intent = new Intent(this, ContentMusic.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
         PendingIntent PI = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Bitmap iconSong = getList().getAlbumB();
+        NotificationCompat.Action action_prev = new NotificationCompat.Action.Builder(R.drawable.ic_skip_previous_min, "", retrievePlaybackAction(PREVIOUS_ACTION)).build();
+        NotificationCompat.Action action_next = new NotificationCompat.Action.Builder(R.drawable.ic_skip_next_min, "", retrievePlaybackAction(NEXT_ACTION)).build();
+        NotificationCompat.Action action_play_or_pause = new NotificationCompat.Action.Builder(playButtonResId, "", retrievePlaybackAction(PLAY_OR_PAUSE_ACTION)).build();
 
-        NotificationCompat.Builder builder =
-                new NotificationCompat.Builder(this, "music_notif")
-                        .setContentIntent(PI)
-                        .setSmallIcon(R.drawable.ic_music_icon)
-                        .setLargeIcon(iconSong)
-                        .setTicker(songTitle)
-                        .setOngoing(true)
-                        .setContentTitle("")
-                        .setContentText(songTitle);
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "music_notif")
+                .setSmallIcon(R.drawable.ic_music_icon)
+                .setLargeIcon(albumB)
+                .setContentIntent(PI)
+                .setContentTitle(titleName)
+                .setContentText(artistName)
+                .setOngoing(true)
+                .setShowWhen(false)
+                .addAction(action_prev)
+                .addAction(action_play_or_pause)
+                .addAction(action_next);
 
-        mManager.notify(NOTIFY_ID, builder.build());
+        android.support.v4.media.app.NotificationCompat.MediaStyle style = new android.support.v4.media.app.NotificationCompat.MediaStyle()
+                .setShowActionsInCompactView(0, 1, 2, 3);
+        builder.setStyle(style);
 
-        if (eventMediaControls != null) {
-            eventMediaControls.play();
+        if (albumB != null) {
+            builder.setColor(Palette.from(albumB).generate().getVibrantColor(Color.parseColor("#403f4d")));
         }
+
+        Notification n = builder.build();
+
+        mManager.notify(NOTIFY_ID, n);
     }
 
     public class MusicBinder extends Binder {

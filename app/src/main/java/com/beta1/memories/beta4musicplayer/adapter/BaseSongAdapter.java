@@ -1,6 +1,8 @@
 package com.beta1.memories.beta4musicplayer.adapter;
 
 import android.content.Context;
+import android.graphics.Color;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -10,6 +12,7 @@ import android.widget.Filterable;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import com.beta1.memories.beta4musicplayer.MusicApp;
 import com.beta1.memories.beta4musicplayer.R;
 import com.beta1.memories.beta4musicplayer.Song;
 
@@ -51,17 +54,26 @@ public class BaseSongAdapter extends BaseAdapter implements Filterable {
             view = LayoutInflater.from(context).inflate(R.layout.list_song, parent, false);
         }
 
-        Song currSong = arSong.get(position);
+        final Song currSong = arSong.get(position);
+        final TextView tvTitle = view.findViewById(R.id.tvTitle);
+        final TextView tvArtist = view.findViewById(R.id.tvArtist);
+        final ImageView ivSong = view.findViewById(R.id.ivSong);
 
-        TextView tvTitle = view.findViewById(R.id.tvTitle);
-        TextView tvArtist = view.findViewById(R.id.tvArtist);
-        ImageView ivSong = view.findViewById(R.id.ivSong);
+        view.setTag(currSong.getId());
 
-        view.setTag(position);
-
+        tvTitle.setTextColor(Color.BLACK);
         tvTitle.setText(currSong.getTitle());
         tvArtist.setText(currSong.getArtist());
         ivSong.setImageBitmap(currSong.getAlbumB());
+
+        if (MusicApp.mService != null) {
+            final long selectSongId = MusicApp.mService.position();
+            if (selectSongId > -1) {
+                if (currSong.getId() == selectSongId) {
+                    tvTitle.setTextColor(Color.parseColor("#E91E63"));
+                }
+            }
+        }
 
         return view;
     }
@@ -79,7 +91,7 @@ public class BaseSongAdapter extends BaseAdapter implements Filterable {
             if (constraint == null || constraint.length() == 0) {
                 filteredList.addAll(arSongFull);
             } else {
-                String filterPattern = constraint.toString().toLowerCase().trim();
+                final String filterPattern = constraint.toString().toLowerCase().trim();
                 for (Song song : arSongFull) {
                     if (song.getTitle().toLowerCase().contains(filterPattern)) {
                         filteredList.add(song);
@@ -87,7 +99,7 @@ public class BaseSongAdapter extends BaseAdapter implements Filterable {
                 }
             }
 
-            FilterResults results = new FilterResults();
+            final FilterResults results = new FilterResults();
             results.values = filteredList;
 
             return results;
